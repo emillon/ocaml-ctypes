@@ -49,7 +49,7 @@ This will make the `ctypes-foreign` ocamlfind subpackage available."))
   (ctypes (= :version))
   dune-configurator
   conf-pkg-config
-  (lwt :with-test)
+  (lwt (and :with-test (>= 2.4.7)))
   (ounit2 :with-test)
   (conf-ncurses :with-test)
   (stdlib-shims :with-test)
