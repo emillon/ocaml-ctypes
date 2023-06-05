@@ -1,16 +1,10 @@
-(executable
+(test
  (name fts_cmd)
  (enabled_if
   (= %{os_type} Unix))
  (libraries fts_stubs fts_generated)
+ (package ctypes)
+ (action (progn))
  (link_flags
   :standard
   (:include config/c_library_flags.sexp)))
-
-(rule
- (alias runtest)
- (enabled_if
-  (= %{os_type} Unix))
- (package ctypes)
- (action (progn))
- (deps ./fts_cmd.exe))
