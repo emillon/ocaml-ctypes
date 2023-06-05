@@ -45,7 +45,7 @@ This will make the `ctypes-foreign` ocamlfind subpackage available."))
  (tags (org:mirage org:ocamllabs))
  (depends
   (ocaml (>= 4.03.0))
-  (integers :with-test)
+  (integers (and :with-test (>= 0.2.2)))
   (ctypes (= :version))
   dune-configurator
   conf-pkg-config
