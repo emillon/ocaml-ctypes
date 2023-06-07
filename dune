@@ -6,3 +6,5 @@
 (deprecated_library_name
  (old_public_name "ctypes.foreign")
  (new_public_name "ctypes-foreign"))
+
+(rule (copy ctypes.opam.template ctypes-foreign.opam.template))
