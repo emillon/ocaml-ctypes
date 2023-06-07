@@ -53,7 +53,8 @@ This will make the `ctypes-foreign` ocamlfind subpackage available."))
   (ounit2 :with-test)
   (conf-ncurses :with-test)
   (stdlib-shims :with-test)
-  (conf-fts (and :with-test (<> :os win32))))
+  (conf-fts (and :with-test (<> :os win32)))
+  (conf-libffi (>= 2.0.0)))
  (synopsis "Dynamic access to foreign C libraries using Ctypes")
  (description "
 This installs the `ctypes-foreign` interface which
