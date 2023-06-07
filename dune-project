@@ -1,4 +1,4 @@
-(lang dune 3.3)
+(lang dune 3.9)
 (name ctypes)
 (formatting (enabled_for dune))
 (use_standard_c_and_cxx_flags true)
