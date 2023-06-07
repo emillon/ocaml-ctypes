@@ -1,6 +1,6 @@
 (test
  (name fts_cmd)
- (enabled_if
+ (build_if
   (= %{os_type} Unix))
  (libraries fts_stubs fts_generated)
  (package ctypes)
