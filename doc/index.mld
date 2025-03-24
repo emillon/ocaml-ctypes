@@ -1,0 +1,21 @@
+{1 ctypes - Combinators for binding to C libraries without writing any C}
+
+{2 What is ctypes?}
+
+Ctypes is an OCaml library to interface with existing C libraries, without
+writing any C "glue code".
+
+{2 Tutorial}
+
+- {{!page-tutorial}Tutorial}
+
+{2 How-to guides}
+
+{2 Reference}
+
+- {{!Ctypes}API documentation}
+
+{2 Explanation}
+
+- {{!page-how_stub_generation_works}How stub generation works}
+- Dynamic linking and dynamic loading
