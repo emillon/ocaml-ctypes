@@ -37,7 +37,7 @@ function [double tgamma(double)] will be wrapped into a C function
 Then, the C part generates a C function that wraps the function with the right
 macro calls:
 
-{[
+{@c[
 value gamma_1_tgamma(value x1)
 {
    double x2 = Double_val(x1);
@@ -131,7 +131,7 @@ So, [tgamma 4.] passes [4.] to the C function [gamma_1_tgamma].
 
 It is available in the linked generated stubs:
 
-{[
+{@c[
 value gamma_1_tgamma(value x1)
 {
    double x2 = Double_val(x1);
