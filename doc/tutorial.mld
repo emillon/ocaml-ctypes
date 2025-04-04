@@ -1,222 +1,456 @@
-{0 Tutorial}
+{0 Ctypes tutorial}
 
-@author Etienne Millon
+@author Jeremy Yallop
 
-The goal of this tutorial is to present what a ctypes project looks like.
+The [ocaml-ctypes] library ("[ctypes]" for short) provides OCaml functions for
+describing C types and binding to C functions, making it possible to interface
+with C without writing or generating C code.
 
-It assumes some familiarity with [opam] and [dune].
+{1 Installing the library}
 
-We are going to consider 2 functions from the standard C library and make them
-available as an OCaml library,
+Before installing [ctypes], you should ensure that you have
+{{:http://sourceware.org/libffi/}libffi} installed on your system.
 
-- [double tgamma(double x)], corresponding to {m \Gamma(x)}
-  ({{:https://en.wikipedia.org/wiki/Gamma_function}Gamma function});
-- [double gamma(double x)], corresponding to {m \log(\Gamma(x))}.
-
-{1 Preparing the environment}
-
-First, create a local switch and install [ctypes]:
+The easiest way to install [ctypes] is to use
+{{:http://opam.ocamlpro.com/}opam}. Once you have [opam] installed, running the
+following command installs the library:
 
 {@shell[
-mkdir ctypes-tutorial
-cd ctypes-tutorial
-opam switch create ./ 5.3.0
-opam install ctypes
+opam install ctypes ctypes-foreign
 ]}
 
-{1 Creating the project}
-
-{2 Boilerplate}
-
-We need to create some files to set up [dune] and [ctypes].
-
-It might seem seem a lot, but this is a one-time setup, independently of the
-number of bound functions.
-
-If you are curious about how it works, this is explained in
-{{!page-how_stub_generation_works}How stub generation works}.
-
-{3 [dune-project]}
-
-{@dune[
-(lang dune 3.17)
-]}
-
-This marks the root of the dune project and what rule versions to use.
-
-{3 [dune]}
-
-{@dune[
-(library
- (name bindings)
- (modules bindings)
- (libraries ctypes))
-
-(executable
- (name generator)
- (modules generator)
- (libraries ctypes.stubs bindings))
-
-(rule
- (with-stdout-to
-  generated.ml
-  (run ./generator.exe ml)))
-
-(rule
- (with-stdout-to
-  generated_stubs.c
-  (run ./generator.exe c)))
-
-(library
- (name generated)
- (modules generated)
- (libraries ctypes.stubs)
- (foreign_stubs
-  (language c)
-  (names generated_stubs)))
-
-(library
-  (name gamma)
-  (modules gamma)
-  (libraries bindings generated))
-
-(executable
- (name demo)
- (modules demo)
- (libraries gamma))
-]}
-
-{3 [gamma.ml]}
+The code in this tutorial can be run interactively.  To load [ctypes], start
+OCaml by running the [ocaml] command, then load the library as follows:
 
 {[
-include Bindings.Generate(Generated)
+#use "topfind";;
+#require "ctypes.foreign";;
+#require "ctypes.top";;
 ]}
 
-{3 [generator.ml]}
+{1 Getting started}
+
+We'll see how to use [ctypes] to describe the types of some standard C and
+POSIX functions, then call the functions from OCaml.  Let's start with the
+[time] function, which returns the current calendar time, and has the following
+signature:
+
+{@c[
+time_t time(time_t *)
+]}
+
+The first step is to open the {!Ctypes}, {!PosixTypes} and {!Foreign} modules.
+The {!Ctypes} module provides functions for describing C types in OCaml.  The
+{!PosixTypes} module includes some extra types, such as [time_t].  The {!Foreign}
+module exposes the [foreign] function that makes it possible to bind C
+functions.
 
 {[
-let () =
-  let prefix = "gamma" in
-  match Sys.argv.(1) with
-  | "ml" ->
-      Cstubs.write_ml Format.std_formatter ~prefix (module Bindings.Generate)
-  | "c" ->
-      print_endline "#include <math.h>";
-      Cstubs.write_c Format.std_formatter ~prefix (module Bindings.Generate)
-  | _ -> assert false
+open Ctypes
+open PosixTypes
+open Foreign
 ]}
 
-{2 [bindings.ml]}
+The following code creates a binding for [time]:
 
 {[
-module Generate (F : Ctypes.FOREIGN) = struct
-  open Ctypes
-  open F
-
-  let tgamma = foreign "tgamma" (double @-> returning double)
-end
+let time = foreign "time" (ptr time_t @-> returning time_t)
 ]}
 
-This module contains OCaml definitions representing the C function we're binding.
-
-{2 [demo.ml]}
+The [foreign] function is the main link between OCaml and C.  It takes two
+arguments: the name of the C function to bind, and a value describing the type
+of the bound function.  Here the function type specifies one argument of type
+[ptr time_t] and a return type of [time_t].  The name bound by [let] in our
+example has the following type:
 
 {[
-let () =
-  Printf.printf "x  tgamma(x)\n\n";
-  for i = 1 to 8 do
-    let x = Float.of_int i in
-    Printf.printf "%d %10g\n" i (Gamma.tgamma x)
-  done
+val time : time_t ptr -> time_t
 ]}
 
-This executable calls [Gamma.tgamma], an OCaml function with type [float ->
-float], with inputs [1.0] to [8.0].
-
-{1 Build and run}
-
-Build and run the demo program:
-
-{v
-dune exec ./demo.exe
-v}
-
-It displays the values of the Gamma function, corresponding to factorial numbers:
-
-{v
-x  tgamma(x)
-
-1          1
-2          1
-3          2
-4          6
-5         24
-6        120
-7        720
-8       5040
-v}
-
-{1 Modify}
-
-Open [bindings.ml] and add the definition of the [gamma] function which has the
-same signature:
+We can call [time] immediately.  The argument is of no interest, so we'll just
+pass a suitably-coerced null pointer:
 
 {[
-module Generate (F : Ctypes.FOREIGN) = struct
-  open Ctypes
-  open F
-
-  let tgamma = foreign "tgamma" (double @-> returning double)
-  let gamma = foreign "gamma" (double @-> returning double)
-  (* This line has been added *)
-end
+time (from_voidp time_t null)
 ]}
 
-And update [demo.ml] to call this function too:
+We're going to call [time] a few times, so let's create a wrapper function that
+passes the null pointer through:
 
 {[
-let () =
-  Printf.printf "x  tgamma(x)   gamma(x)\n\n";
-  (* Added:                  ^^^^^^^^^^^ *)
-  for i = 1 to 8 do
-    let x = Float.of_int i in
-    Printf.printf "%d %10g %10.3f\n" i (Gamma.tgamma x) (Gamma.gamma x)
-    (* Added:             ^^^^^^^                      ^^^^^^^^^^^^^^^^ *)
-  done
+(* val time' : unit -> time_t *)
+let time' () = time (from_voidp time_t null)
 ]}
 
-Build and run the updated version:
+Since [time_t] is an abstract type, we need a second function to do anything
+useful with the return values from [time]. We'll use the standard C function
+[difftime], which has the following signature:
 
-{v
-dune exec ./demo.exe
-v}
+{@c[
+double difftime(time_t, time_t)
+]}
 
-It outputs:
+The following code creates a binding for [difftime]:
 
-{v
-x  tgamma(x)   gamma(x)             
+{[
+let difftime = foreign "difftime" (time_t @-> time_t @-> returning double)
+]}
 
-1          1      0.000
-2          1      0.000
-3          2      0.693
-4          6      1.792
-5         24      3.178
-6        120      4.787
-7        720      6.579
-8       5040      8.525
-v}
+This time the bound name [difftime] has the following OCaml type:
 
-{1 Conclusion}
+{[
+val difftime : time_t -> time_t -> float
+]}
 
-We've created a small library that exposes 2 functions from the standard C
-library, without writing any C. There was a one-time cost to set this up, but
-once it is paid, changes are simple.
+Now we can create a timer function that calls [time] twice to measure the
+execution time of a function.
 
-In the particular case of [float -> float] function, this is overcomplicated,
-but this makes more interesting use cases possible.
+{[
+(* val measure_execution_time : (unit -> unit) -> float *)
+let measure_execution_time timed_function =
+  let start_time = time' () in
+  let () = timed_function () in
+  let end_time = time' () in
+  difftime end_time start_time
+]}
 
-{1 What to do next}
+The [measure_execution_time] function has a problem: on many systems it uses a
+resolution of seconds, which may not be sufficiently precise. In a later
+section we'll look at how to refine the function to use a more precise timer.
 
-You might be interested in:
+{2 Aside: why do we need to say "[returning]"?}
 
-- learning {{!page-how_stub_generation_works}How stub generation works}
+Recall the description of the types of [time] and [difftime]:
+
+{[
+ptr time_t @-> returning time_t
+time_t @-> time_t @-> returning double
+]}
+
+The [returning] function may appear superfluous: why couldn't we simply give
+the types as follows?
+
+{[
+ptr time_t @-> time_t
+time_t @-> time_t @-> double
+]}
+
+The reason involves higher types and two differences between the way that
+functions are treated in OCaml and C.  First, functions are first-class values
+in OCaml, but not in C.   For example, in C, it is possible to return a
+function pointer from a function, but not to return an actual function.
+Second, OCaml functions are typically defined in a curried style in OCaml: the
+signature of a "two-argument function" is written as follows
+
+{[
+val curried : int -> int -> int
+]}
+
+but this really means
+
+{[
+val curried : int -> (int -> int)
+]}
+
+and the arguments can be supplied one at a time.  
+
+{[
+curried 3 4  (* supply both arguments *)
+let f = curried 3 in f 4 (* supply one argument at a time *)
+]}
+
+In contrast, C functions receive their arguments all at once; the equivalent C
+function type is the following:
+
+{@c[
+int uncurried_C(int, int);
+]}
+
+and the arguments must be supplied together:
+
+{@c[
+uncurried_C(3, 4);
+]}
+
+A C function written in curried style looks very different:
+
+{@c[
+/* A function that accepts an int, and returns a function pointer that
+   accepts a second int and returns an int. */
+typedef int (function_t)(int);
+function_t *curried_C(int);
+
+curried_C(3)(4); /* supply both arguments */
+function_t *f = curried_C(3); f(4); /* supply one argument at a time */
+]}
+
+The OCaml type of [uncurried_C] when bound by [ctypes] is [int -> int -> int]:
+a two-argument function.  The OCaml type of [curried_C] when bound by [ctypes]
+is [int -> (int -> int)]: a one-argument function that returns a one-argument
+function.  In OCaml, of course, these types are absolutely equivalent.  Since
+the OCaml types are the same, but the C semantics are quite different, we need
+some kind of marker to distinguish the cases; this is the purpose of
+[returning].
+
+{1 Pointers and arrays}
+
+Pointers are at the heart of C, so they are necessarily part of [ctypes], which
+provides support for pointer arithmetic, pointer conversions, reading and
+writing through pointers, and passing and returning pointers to and from
+functions.  We've already seen a simple use of pointers in the argument of
+[time].  Let's look at a (very slightly) less trivial example where we pass a
+non-null pointer to a function.  Continuing with the theme from earlier, we'll
+bind to the [ctime] function which converts a [time_t] value to a
+human-readable string.  The C signature of [ctime] is as follows:
+
+{@c[
+char *ctime(const time_t *timep);
+]}
+
+The corresponding C types binding can be written 
+
+{[
+(* val ctime : time_t ptr -> string *)
+let ctime = foreign "ctime" (ptr time_t @-> returning string)
+]}
+
+Recall that we have a function that retrieves the current time as a [time_t] value:
+
+{[
+val time' : unit -> time_t
+]}
+
+In order to pass the result of [time'] to the [ctime] function we need to place
+it in addressable memory and retrieve its address.  We can accomplish that by
+allocating space for it.
+
+{[
+let t_ptr = allocate time_t (time' ())
+]}
+
+The [allocate] function takes two arguments: the type of the memory to be
+allocated, and the initial value; it returns a suitably-typed pointer.  We can
+now call [ctime], passing the pointer as argument:
+
+{[
+ctime t_ptr
+(* => "Wed Jun  5 11:09:40 2013\n" *)
+]}
+
+{1 Views}
+
+The [string] type value in the specification of [ctime] is an example of a {b
+view}.  Views create new C type descriptions that have special behaviour when
+used to read or write C values.  The [string] view wraps the C type [char *]
+(written as [ptr char]), and converts between the C and OCaml string
+representations each time the value is written or read.
+
+The function used to create views is {!Ctypes.view}; it has the following
+signature:
+
+{[
+val view : read:('a -> 'b) -> write:('b -> 'a) -> 'a typ -> 'b typ
+]}
+
+The string view is created using a pair of functions that convert between the C and OCaml representations
+
+{[
+val string_of_char_ptr : char ptr -> string
+val char_ptr_of_string : string -> char ptr
+
+(* val string : string typ *)
+let string = view ~read:string_of_char_ptr ~write:char_ptr_of_string (ptr char)
+]}
+
+Views can often make slightly awkward C types easier to use.  The [ctypes]
+distribution includes type values [ptr_opt], [string_opt] and [funptr_opt] that
+map possibly-null pointers into option values.
+
+{1 Structs and unions}
+
+The C constructs [struct] and [union] make it possible to build new types from
+existing types.  In [ctypes] there are counterparts that work similarly.
+
+Let's improve the timer function that we wrote earlier.  The POSIX function
+[gettimeofday] makes it possible to retrieve the time with microsecond
+resolution.  The signature of [gettimeofday] is as follows:
+
+{@c[
+int gettimeofday(struct timeval *, struct timezone *tv);
+]}
+
+
+The [struct timeval] type has the following definition: 
+
+
+{@c[
+struct timeval {
+  long tv_sec;
+  long tv_usec;
+};
+]}
+
+
+Using [ctypes] we can describe this type as follows:
+
+
+{[
+type timeval
+let timeval : timeval structure typ = structure "timeval"
+let tv_sec  = field timeval "tv_sec" long 
+let tv_usec = field timeval "tv_usec" long 
+let () = seal timeval
+]}
+
+
+The first line defines a new OCaml type [timeval] that we'll use to instantiate the parameterised [structure] type.  Creating a new OCaml type to reflect the underlying C type in this way means that the structure we define will be incompatible with other structures in the program, which helps to avoid errors.
+
+The second line calls [structure], which creates the new structure type.  At this point the structure type is incomplete, so we can add fields, but cannot yet create structure values.  Once we seal the structure the situation is reversed: we will be able to create values, but adding fields to a sealed structure is an error.
+
+The names [tv_sec] and [tv_usec] are bound to structure fields.  Structure fields are typed accessors, associated with a particular structure, that correspond to labels in C.
+
+Since [gettimeofday] also accepts a [struct timezeone] pointer, we need to define a second structure type:
+
+{[
+type timezone
+let timezone : timezone structure typ = structure "timezone"
+]}
+
+
+We don't need to create [struct timezone] values, so we can leave this struct as incomplete.
+
+Now we're ready to bind to [gettimeofday]:
+
+{[
+(* val gettimeofday : timeval structure ptr -> timezone structure ptr -> int *)
+let gettimeofday = foreign "gettimeofday" ~check_errno:true
+    (ptr timeval @-> ptr timezone @-> returning int)
+]}
+
+
+There's one new feature here: the [~check_errno:true] optional argument makes [returning] check whether the bound C function modifies the C error flag [errno].  Changes to  [errno] are mapped into exceptions.
+
+As before we can create a wrapper to make [gettimeofday] easier to use.  The functions [make], [addr] and [getf] respectively create a structure value, retrieve the address of a structure value, and retrieve the value of a field.
+ 
+
+{[
+(* val gettimeofday : unit -> float *)
+let gettimeofday' () =
+  let tv = make timeval in
+  ignore (gettimeofday (addr tv) (from_voidp timezone null));
+  let secs = getf tv tv_sec
+  and usecs = getf tv tv_usec in
+  Signed.Long.(Pervasives.
+    (float (to_int secs) +. float (to_int usecs) /. 1_000_000.))
+]}
+
+
+Now we can rewrite [measure_execution_time] to measure more precisely:
+
+{[
+(* val measure_execution_time : (unit -> unit) -> float *)
+let measure_execution_time timed_function =
+  let start_time = gettimeofday' () in
+  let () = timed_function () in
+  let end_time = gettimeofday' () in
+  end_time -. start_time
+]}
+
+{1 Passing functions to C}
+
+Using [ctypes], it's straightforward to pass OCaml functions to C.  The standard C function [qsort] has the following signature:
+
+
+{@c[
+void qsort(void *base, size_t nmemb, size_t size,
+           int(*compar)(const void *, const void *));
+]}
+
+
+C programmers often use [typedef] to make type definitions involving function pointers easier to read.  Using a typedef the type of [qsort] looks like this:
+
+
+{@c[
+typedef int(compare_t)(const void *, const void *);
+]}
+
+{@c[
+void qsort(void *base, size_t nmemb, size_t size, compare_t *);
+]}
+
+
+We can define the type similarly in [ctypes].  Since type descriptions are regular values, we can just use [let] in place of [typedef].  The type of [qsort] is defined as follows: 
+
+
+{[
+let compare_t = ptr void @-> ptr void @-> returning int
+
+let qsort = foreign "qsort"
+   (ptr void @-> size_t @-> size_t @-> funptr compare_t @-> returning void)
+]}
+
+
+The resulting value is a higher-order function, as shown by its type:
+
+
+{[
+val qsort : void ptr -> size_t -> size_t ->
+            (void ptr -> void ptr -> int) -> unit
+]}
+
+
+As before, let's define a wrapper function to make [qsort] easier to use.  The second and third arguments to [qsort] specify the length (number of elements) of the array and the element size.  Arrays created using [ctypes] have a richer runtime structure than C arrays, so we don't need to pass size information around.  Furthermore, we can use OCaml polymorphism in place of the unsafe [void ptr] type.
+
+
+{[
+let qsort' arr cmp =
+  let open Unsigned.Size_t in
+  let ty = CArray.element_type arr in
+  let len = of_int (CArray.length arr) in
+  let elsize = of_int (sizeof ty) in
+  let start = to_voidp (CArray.start arr) in
+  let compare l r = cmp (!@ (from_voidp ty l)) (!@ (from_voidp ty r)) in
+    qsort start len elsize compare
+]}
+
+
+Our wrapper function has the following type: 
+
+
+{[
+val qsort' : 'a carray -> ('a -> 'a -> int) -> unit
+]}
+
+
+Using [qsort'] to sort arrays is straightforward.  First, we'll use
+{!CArray.of_list} to create a C array:
+
+
+{[
+let arr = CArray.of_list int [5;3;1;2;4]
+]}
+
+
+We can sort the array using {!Pervasives.compare}, and inspect the result using
+{!CArray.to_list}:
+
+{[
+qsort' arr Pervasives.compare
+CArray.to_list arr
+(* => [1; 2; 3; 4; 5] *)
+]}
+
+
+Let's reverse the ordering:
+
+
+{[
+qsort' arr (fun l r -> - compare l r)
+CArray.to_list arr
+(* [5; 4; 3; 2; 1] *)
+]}
+
+{1 Further examples}
+
+The [ctypes] distribution contains a number of larger scale examples, including {{:https://github.com/ocamllabs/ocaml-ctypes/tree/master/examples/fts}bindings to the POSIX [fts] API} and {{:https://github.com/ocamllabs/ocaml-ctypes/tree/master/examples/ncurses}a [ctypes] variant of the [curses] C extension} from the {{:http://caml.inria.fr/pub/docs/manual-ocaml/manual033.html#toc147}OCaml manual}.
+

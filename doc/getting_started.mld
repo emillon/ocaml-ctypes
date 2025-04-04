@@ -1,0 +1,225 @@
+{0 Getting started}
+
+@author Etienne Millon
+
+The goal of this tutorial is to present what a ctypes project looks like.
+
+It assumes some familiarity with [opam] and [dune].
+
+We are going to consider 2 functions from the standard C library and make them
+available as an OCaml library,
+
+- [double tgamma(double x)], corresponding to {m \Gamma(x)}
+  ({{:https://en.wikipedia.org/wiki/Gamma_function}Gamma function});
+- [double gamma(double x)], corresponding to {m \log(\Gamma(x))}.
+
+{1 Preparing the environment}
+
+First, create a local switch and install [ctypes]:
+
+{@shell[
+mkdir ctypes-tutorial
+cd ctypes-tutorial
+opam switch create ./ 5.3.0
+opam install ctypes
+]}
+
+{1 Creating the project}
+
+{2 Boilerplate}
+
+We need to create some files to set up [dune] and [ctypes].
+
+It might seem seem a lot, but this is a one-time setup, independently of the
+number of bound functions.
+
+If you are curious about how it works, this is explained in
+{{!page-how_stub_generation_works}How stub generation works}.
+
+{3 [dune-project]}
+
+{@dune[
+(lang dune 3.17)
+]}
+
+This marks the root of the dune project and what rule versions to use.
+
+{3 [dune]}
+
+{@dune[
+(library
+ (name bindings)
+ (modules bindings)
+ (libraries ctypes))
+
+(executable
+ (name generator)
+ (modules generator)
+ (libraries ctypes.stubs bindings))
+
+(rule
+ (with-stdout-to
+  generated.ml
+  (run ./generator.exe ml)))
+
+(rule
+ (with-stdout-to
+  generated_stubs.c
+  (run ./generator.exe c)))
+
+(library
+ (name generated)
+ (modules generated)
+ (libraries ctypes.stubs)
+ (foreign_stubs
+  (language c)
+  (names generated_stubs)))
+
+(library
+  (name gamma)
+  (modules gamma)
+  (libraries bindings generated))
+
+(executable
+ (name demo)
+ (modules demo)
+ (libraries gamma))
+]}
+
+{3 [gamma.ml]}
+
+{[
+include Bindings.Generate(Generated)
+]}
+
+{3 [generator.ml]}
+
+{[
+let () =
+  let prefix = "gamma" in
+  match Sys.argv.(1) with
+  | "ml" ->
+      Cstubs.write_ml Format.std_formatter ~prefix (module Bindings.Generate)
+  | "c" ->
+      print_endline "#include <math.h>";
+      Cstubs.write_c Format.std_formatter ~prefix (module Bindings.Generate)
+  | _ -> assert false
+]}
+
+{2 [bindings.ml]}
+
+{[
+module Generate (F : Ctypes.FOREIGN) = struct
+  open Ctypes
+  open F
+
+  let tgamma = foreign "tgamma" (double @-> returning double)
+end
+]}
+
+This module contains OCaml definitions representing the C function we're binding.
+
+{2 [demo.ml]}
+
+{[
+let () =
+  Printf.printf "x  tgamma(x)\n\n";
+  for i = 1 to 8 do
+    let x = Float.of_int i in
+    Printf.printf "%d %10g\n" i (Gamma.tgamma x)
+  done
+]}
+
+This executable calls [Gamma.tgamma], an OCaml function with type [float ->
+float], with inputs [1.0] to [8.0].
+
+{1 Build and run}
+
+Build and run the demo program:
+
+{v
+dune exec ./demo.exe
+v}
+
+It displays the values of the Gamma function, corresponding to factorial numbers:
+
+{v
+x  tgamma(x)
+
+1          1
+2          1
+3          2
+4          6
+5         24
+6        120
+7        720
+8       5040
+v}
+
+{1 Modify}
+
+Open [bindings.ml] and add the definition of the [gamma] function which has the
+same signature:
+
+{[
+module Generate (F : Ctypes.FOREIGN) = struct
+  open Ctypes
+  open F
+
+  let tgamma = foreign "tgamma" (double @-> returning double)
+  let gamma = foreign "gamma" (double @-> returning double)
+  (* This line has been added *)
+end
+]}
+
+And update [demo.ml] to call this function too:
+
+{[
+let () =
+  Printf.printf "x  tgamma(x)   gamma(x)\n\n";
+  (* Added:                  ^^^^^^^^^^^ *)
+  for i = 1 to 8 do
+    let x = Float.of_int i in
+    Printf.printf "%d %10g %10.3f\n" i (Gamma.tgamma x) (Gamma.gamma x)
+    (* Added:             ^^^^^^^                      ^^^^^^^^^^^^^^^^ *)
+  done
+]}
+
+Build and run the updated version:
+
+{v
+dune exec ./demo.exe
+v}
+
+It outputs:
+
+{v
+x  tgamma(x)   gamma(x)             
+
+1          1      0.000
+2          1      0.000
+3          2      0.693
+4          6      1.792
+5         24      3.178
+6        120      4.787
+7        720      6.579
+8       5040      8.525
+v}
+
+{1 Conclusion}
+
+We've created a small library that exposes 2 functions from the standard C
+library, without writing any C. There was a one-time cost to set this up, but
+once it is paid, changes are simple.
+
+In the particular case of [float -> float] function, this is overcomplicated,
+but this makes more interesting use cases possible.
+
+{1 What to do next}
+
+You might be interested in:
+
+- continuing with {{!page-tutorial}another tutorial that goes through more
+  [ctypes] features}
+- learning {{!page-how_stub_generation_works}How stub generation works}
+- {{!page-how_to_use_ctypes_in_a_dune_project}applying this to an existing dune project}

@@ -1,0 +1,267 @@
+{0 How to use ctypes in a dune project}
+
+@author Etienne Millon
+
+{1 About this guide}
+
+This guide assumes that you have a working dune project and will show you how
+to add bindings to a C library. This guide does not use the experimental ctypes
+support for [dune], but uses manual rules.
+
+In this example, we suppose our project is an image manipulation library called
+[images] and we will be adding support to the PNG image format using the
+[libpng] library.
+
+{1 Create a library}
+
+Create a library called [libpng] that will abstract away the build system
+aspects of using stub generation.
+
+Create the following file hierarchy:
+
+{@text[
+lib/libpng/bindings/dune
+lib/libpng/bindings/png_bindings.ml
+lib/libpng/generator/generator.ml
+lib/libpng/generator/dune
+lib/libpng/generated/dune
+lib/libpng/type_generator/dune
+lib/libpng/dune
+lib/libpng/libpng.ml
+]}
+
+More information about this [dune] setup can be found in
+{{!page-how_stub_generation_works}this explanation.
+
+{2 File contents}
+
+{3 [lib/libpng/bindings/dune]}
+
+{@dune[
+(library
+ (name png_bindings)
+ (package images)
+ (libraries ctypes))
+]}
+
+{3 [lib/libpng/bindings/png_bindings.ml]}
+
+Add bindings to the relevant functions here using the [F] and [T] modules.
+
+{[
+module Generate (F : Ctypes.FOREIGN) = struct
+  (* ... *)
+end
+
+module Generate_types (T : Ctypes.TYPE) = struct
+  (* ... *)
+end
+]}
+
+{%html:<details>
+<summary>Concrete example with libpng</summary>
+%}
+
+{[
+module Generate (F : Ctypes.FOREIGN) = struct
+  type image
+
+  let image_ : image Ctypes.structure Ctypes.typ = Ctypes.structure "png_image"
+  let image = Ctypes.typedef image_ "png_image"
+  let opaque = Ctypes.field image "opaque" (Ctypes.ptr Ctypes.void)
+  let version = Ctypes.field image "version" Ctypes.uint32_t
+  let width = Ctypes.field image "width" Ctypes.uint32_t
+  let height = Ctypes.field image "height" Ctypes.uint32_t
+  let () = Ctypes.seal image_
+
+  let png_image_begin_read_from_file =
+    F.foreign "png_image_begin_read_from_file"
+      F.(Ctypes.ptr image @-> Ctypes.ptr Ctypes.char @-> returning Ctypes.int)
+end
+
+module Generate_types (T : Ctypes.TYPE) = struct
+  let png_image_version = T.constant "PNG_IMAGE_VERSION" T.uint32_t
+end
+]}
+
+{%html:</details> %}
+
+
+{3 [lib/libpng/generator/dune]}
+
+{@dune[
+(executable
+ (name generator)
+ (libraries ctypes.stubs png_bindings))
+]}
+
+{3 [lib/libpng/generator/generator.ml]}
+
+If the C library needs particular [#include] lines, they need to be specified here.
+ 
+{[
+let () =
+  match Sys.argv with
+  | [| _; "ml" |] ->
+      Cstubs.write_ml Format.std_formatter ~prefix:"images_png"
+        (module Png_bindings.Generate)
+  | [| _; "c" |] ->
+      Printf.printf "#include <png.h>\n";
+      Cstubs.write_c Format.std_formatter ~prefix:"images_png"
+        (module Png_bindings.Generate)
+  | [| _; "types" |] ->
+      Cstubs.Types.write_c Format.std_formatter
+        (module Png_bindings.Generate_types)
+  | _ -> assert false
+]}
+
+{3 [lib/libpng/generated/dune]}
+
+If the C library needs particular [-L] or [-l] flags, they need to be specified
+here.
+
+{@dune[
+(library
+ (name png_generated)
+ (package images)
+ (libraries ctypes.stubs)
+ (c_library_flags :standard -lpng)
+ (foreign_stubs
+  (language c)
+  (names png_generated_stubs)))
+
+(rule
+ (with-stdout-to
+  png_generated.ml
+  (run ../generator/generator.exe ml)))
+
+(rule
+ (with-stdout-to
+  png_generated_stubs.c
+  (run ../generator/generator.exe c)))
+]}
+
+{3 [lib/libpng/type_generator/dune]}
+
+The [#include] lines to access the library will need to be specified here too.
+One rule needs to access the location of [ctypes] C headers. This approach
+might break if [ctypes] is vendored in your dune workspace but as of Dune 3.18
+there is no good solution in that case.
+
+{@dune[
+(rule
+ (with-stdout-to
+  type_generator.c
+  (progn
+   (echo "#include <png.h>\n")
+   (run ../generator/generator.exe types))))
+
+(rule
+ (with-stdout-to
+  ctypes-location.txt
+  (run dirname %{lib:ctypes:ctypes_cstubs_internals.h})))
+
+(rule
+ (target types_generator.exe)
+ (action
+  (run
+   %{cc}
+   -I
+   %{read-strings:ctypes-location.txt}
+   -o
+   %{target}
+   %{dep:type_generator.c})))
+
+(rule
+ (with-stdout-to
+  png_types_generated.ml
+  (run ./types_generator.exe)))
+
+(library
+ (name png_types_generated)
+ (package images)
+ (libraries ctypes))
+]}
+
+{3 [lib/libpng/dune]}
+
+{@dune[
+(library
+ (name libpng)
+ (libraries png_bindings png_generated png_types_generated)
+ (package images))
+]}
+
+{3 [lib/libpng/libpng.ml]}
+
+This module will reexport both kinds of bindings.
+
+{[
+include Png_bindings.Generate (Png_generated)
+include Png_bindings.Generate_types (Png_types_generated)
+]}
+
+{2 Aside: using a private library as a dependency of a public library}
+
+We've used libraries to make our build more modular. This can be a problem if
+the larger project ([images] in our example) is a public library, because the
+inner libraries are not public API. By adding [(package images)] to them and
+not setting a [(public_name)], we install them but without making their
+interface public.
+
+If your main project is an executable or a non-public library, the `(package)`
+fields can be left out.
+
+{2 Aside: if you're not using type bindings}
+
+If you're not using type bindings ({e ie}, the body of the [Generate_types] functor is left empty), you can remove:
+
+- the [Generate_types] functor;
+- the ["types"] branch in [generator.ml];
+- the [type_generator] directory;
+- mentions of [png_types_generated] in [lib/libpng/dune] and [lib/libpng/libpng.ml]
+
+{1 Use this library}
+
+Now, use this library in your existing code. Add [libpng] to [(libraries ...)]
+in [lib/dune] and create [lib/png.ml].
+
+In this new module, define high-level functions that use the [ctypes] API and
+the values from [Libpng].
+
+{%html:<details>
+
+<summary>Concrete example with libpng</summary>
+%}
+
+This function reads an image using [libpng] and returns its dimensions.
+
+{[
+let of_file ~path =
+  let image = Ctypes.make Libpng.image in
+  Ctypes.setf image Libpng.opaque Ctypes.null;
+  Ctypes.setf image Libpng.version Libpng.png_image_version;
+  let cpath = Ctypes.CArray.of_string path in
+  let r =
+    Libpng.png_image_begin_read_from_file (Ctypes.addr image)
+      (Ctypes.CArray.start cpath)
+  in
+  if r = 0 then None
+  else
+    let width = Unsigned.UInt32.to_int32 (Ctypes.getf image Libpng.width) in
+    let height = Unsigned.UInt32.to_int32 (Ctypes.getf image Libpng.height) in
+    Some { Metadata.width; height }
+]}
+
+{%html:</details> %}
+
+{1 Update the project metadata}
+
+Your project now uses [ctypes], so add it as a dependency in your [opam] files
+(directly or by modifying [dune-project]).
+
+{1 Conclusion}
+
+We've seen how to add new [ctypes] bindings to an existing project. By using
+plain dune rules, you have a better guarantee that this won't break in the
+future.
