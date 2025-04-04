@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>getting_started (ctypes.getting_started)</title><meta charset="utf-8"/><link rel="stylesheet" href="../odoc.support/odoc.css"/><meta name="generator" content="odoc 2.4.4"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script src="../odoc.support/highlight.pack.js"></script><script>hljs.initHighlightingOnLoad();</script><link rel="stylesheet" href="../odoc.support/katex.min.css"/><script src="../odoc.support/katex.min.js"></script><script>
+//<![CDATA[
+
+          document.addEventListener("DOMContentLoaded", function () {
+            var elements = Array.from(document.getElementsByClassName("odoc-katex-math"));
+            for (var i = 0; i < elements.length; i++) {
+              var el = elements[i];
+              var content = el.textContent;
+              var new_el = document.createElement("span");
+              new_el.setAttribute("class", "odoc-katex-math-rendered");
+              var display = el.classList.contains("display");
+              katex.render(content, new_el, { throwOnError: false, displayMode: display });
+              el.replaceWith(new_el);
+            }
+          });
+        
+//]]>
+</script></head><body class="odoc"><nav class="odoc-nav"><a href="index.html">Up</a> – <a href="index.html">ctypes</a> &#x00BB; getting_started</nav><header class="odoc-preamble"><h1 id="getting-started"><a href="#getting-started" class="anchor"></a>Getting started</h1><ul class="at-tags"><li class="author"><span class="at-tag">author</span> Etienne Millon</li></ul><p>The goal of this tutorial is to present what a ctypes project looks like.</p><p>It assumes some familiarity with <code>opam</code> and <code>dune</code>.</p><p>We are going to consider 2 functions from the standard C library and make them available as an OCaml library,</p><ul><li><code>double tgamma(double x)</code>, corresponding to <code class="odoc-katex-math">\Gamma(x)</code> (<a href="https://en.wikipedia.org/wiki/Gamma_function">Gamma function</a>);</li><li><code>double gamma(double x)</code>, corresponding to <code class="odoc-katex-math">\log(\Gamma(x))</code>.</li></ul></header><nav class="odoc-toc"><ul><li><a href="#preparing-the-environment">Preparing the environment</a></li><li><a href="#creating-the-project">Creating the project</a><ul><li><a href="#boilerplate">Boilerplate</a><ul><li><a href="#dune-project"><code>dune-project</code></a></li><li><a href="#dune"><code>dune</code></a></li><li><a href="#gamma.ml"><code>gamma.ml</code></a></li><li><a href="#generator.ml"><code>generator.ml</code></a></li></ul></li><li><a href="#bindings.ml"><code>bindings.ml</code></a></li><li><a href="#demo.ml"><code>demo.ml</code></a></li></ul></li><li><a href="#build-and-run">Build and run</a></li><li><a href="#modify">Modify</a></li><li><a href="#conclusion">Conclusion</a></li><li><a href="#what-to-do-next">What to do next</a></li></ul></nav><div class="odoc-content"><h2 id="preparing-the-environment"><a href="#preparing-the-environment" class="anchor"></a>Preparing the environment</h2><p>First, create a local switch and install <code>ctypes</code>:</p><pre class="language-shell"><code>mkdir ctypes-tutorial
+cd ctypes-tutorial
+opam switch create ./ 5.3.0
+opam install ctypes</code></pre><h2 id="creating-the-project"><a href="#creating-the-project" class="anchor"></a>Creating the project</h2><h3 id="boilerplate"><a href="#boilerplate" class="anchor"></a>Boilerplate</h3><p>We need to create some files to set up <code>dune</code> and <code>ctypes</code>.</p><p>It might seem seem a lot, but this is a one-time setup, independently of the number of bound functions.</p><p>If you are curious about how it works, this is explained in <a href="how_stub_generation_works.html" title="how_stub_generation_works">How stub generation works</a>.</p><h4 id="dune-project"><a href="#dune-project" class="anchor"></a><code>dune-project</code></h4><pre class="language-dune"><code>(lang dune 3.17)</code></pre><p>This marks the root of the dune project and what rule versions to use.</p><h4 id="dune"><a href="#dune" class="anchor"></a><code>dune</code></h4><pre class="language-dune"><code>(library
+ (name bindings)
+ (modules bindings)
+ (libraries ctypes))
+
+(executable
+ (name generator)
+ (modules generator)
+ (libraries ctypes.stubs bindings))
+
+(rule
+ (with-stdout-to
+  generated.ml
+  (run ./generator.exe ml)))
+
+(rule
+ (with-stdout-to
+  generated_stubs.c
+  (run ./generator.exe c)))
+
+(library
+ (name generated)
+ (modules generated)
+ (libraries ctypes.stubs)
+ (foreign_stubs
+  (language c)
+  (names generated_stubs)))
+
+(library
+  (name gamma)
+  (modules gamma)
+  (libraries bindings generated))
+
+(executable
+ (name demo)
+ (modules demo)
+ (libraries gamma))</code></pre><h4 id="gamma.ml"><a href="#gamma.ml" class="anchor"></a><code>gamma.ml</code></h4><pre class="language-ocaml"><code>include Bindings.Generate(Generated)</code></pre><h4 id="generator.ml"><a href="#generator.ml" class="anchor"></a><code>generator.ml</code></h4><pre class="language-ocaml"><code>let () =
+  let prefix = &quot;gamma&quot; in
+  match Sys.argv.(1) with
+  | &quot;ml&quot; -&gt;
+      Cstubs.write_ml Format.std_formatter ~prefix (module Bindings.Generate)
+  | &quot;c&quot; -&gt;
+      print_endline &quot;#include &lt;math.h&gt;&quot;;
+      Cstubs.write_c Format.std_formatter ~prefix (module Bindings.Generate)
+  | _ -&gt; assert false</code></pre><h3 id="bindings.ml"><a href="#bindings.ml" class="anchor"></a><code>bindings.ml</code></h3><pre class="language-ocaml"><code>module Generate (F : Ctypes.FOREIGN) = struct
+  open Ctypes
+  open F
+
+  let tgamma = foreign &quot;tgamma&quot; (double @-&gt; returning double)
+end</code></pre><p>This module contains OCaml definitions representing the C function we're binding.</p><h3 id="demo.ml"><a href="#demo.ml" class="anchor"></a><code>demo.ml</code></h3><pre class="language-ocaml"><code>let () =
+  Printf.printf &quot;x  tgamma(x)\n\n&quot;;
+  for i = 1 to 8 do
+    let x = Float.of_int i in
+    Printf.printf &quot;%d %10g\n&quot; i (Gamma.tgamma x)
+  done</code></pre><p>This executable calls <code>Gamma.tgamma</code>, an OCaml function with type <code>float -&gt;
+float</code>, with inputs <code>1.0</code> to <code>8.0</code>.</p><h2 id="build-and-run"><a href="#build-and-run" class="anchor"></a>Build and run</h2><p>Build and run the demo program:</p><pre>dune exec ./demo.exe</pre><p>It displays the values of the Gamma function, corresponding to factorial numbers:</p><pre>x  tgamma(x)
+
+1          1
+2          1
+3          2
+4          6
+5         24
+6        120
+7        720
+8       5040</pre><h2 id="modify"><a href="#modify" class="anchor"></a>Modify</h2><p>Open <code>bindings.ml</code> and add the definition of the <code>gamma</code> function which has the same signature:</p><pre class="language-ocaml"><code>module Generate (F : Ctypes.FOREIGN) = struct
+  open Ctypes
+  open F
+
+  let tgamma = foreign &quot;tgamma&quot; (double @-&gt; returning double)
+  let gamma = foreign &quot;gamma&quot; (double @-&gt; returning double)
+  (* This line has been added *)
+end</code></pre><p>And update <code>demo.ml</code> to call this function too:</p><pre class="language-ocaml"><code>let () =
+  Printf.printf &quot;x  tgamma(x)   gamma(x)\n\n&quot;;
+  (* Added:                  ^^^^^^^^^^^ *)
+  for i = 1 to 8 do
+    let x = Float.of_int i in
+    Printf.printf &quot;%d %10g %10.3f\n&quot; i (Gamma.tgamma x) (Gamma.gamma x)
+    (* Added:             ^^^^^^^                      ^^^^^^^^^^^^^^^^ *)
+  done</code></pre><p>Build and run the updated version:</p><pre>dune exec ./demo.exe</pre><p>It outputs:</p><pre>x  tgamma(x)   gamma(x)             
+
+1          1      0.000
+2          1      0.000
+3          2      0.693
+4          6      1.792
+5         24      3.178
+6        120      4.787
+7        720      6.579
+8       5040      8.525</pre><h2 id="conclusion"><a href="#conclusion" class="anchor"></a>Conclusion</h2><p>We've created a small library that exposes 2 functions from the standard C library, without writing any C. There was a one-time cost to set this up, but once it is paid, changes are simple.</p><p>In the particular case of <code>float -&gt; float</code> function, this is overcomplicated, but this makes more interesting use cases possible.</p><h2 id="what-to-do-next"><a href="#what-to-do-next" class="anchor"></a>What to do next</h2><p>You might be interested in:</p><ul><li>continuing with <a href="tutorial.html" title="tutorial">another tutorial that goes through more <code>ctypes</code> features</a></li><li>learning <a href="how_stub_generation_works.html" title="how_stub_generation_works">How stub generation works</a></li><li><a href="how_to_use_ctypes_in_a_dune_project.html" title="how_to_use_ctypes_in_a_dune_project">applying this to an existing dune project</a></li></ul></div></body></html>
