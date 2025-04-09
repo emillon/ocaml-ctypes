@@ -2,9 +2,9 @@
 
 @author Etienne Millon
 
-Ctypes manipulates two related concepts: {e dynamic linking} and {e dynamic
-loading}. These are related, but different. Understanding the difference might
-help answer the question, "Why can't ctypes find my symbols?".
+Ctypes manipulates two related concepts: {e dynamic linking} and
+{e dynamic loading}. These are related, but different. Understanding the
+difference might help answer the question, "Why can't ctypes find my symbols?".
 
 This document is specific to Linux.
 
@@ -46,11 +46,11 @@ These two mechanisms are similar, and actually rely on the same underlying
 tools: the ELF file format used by [.so] files contains a list of symbols that
 are queried by the dynamic loader and by [dlsym].
 
-It is actually possible to dynamically load a dynamic library using [dlopen]
-(in the context of [ctypes], via {!Dl.dlopen}) and refer to code defined in it
-using [dlsym] (in the context of [ctypes], via {!Foreign.foreign}). But doing
-so requires knowing the path to the right [.so] file, and applications usually
-are not concerned with that (in contrast applications know where to look for
+It is actually possible to dynamically load a dynamic library using [dlopen] (in
+the context of [ctypes], via {!Dl.dlopen}) and refer to code defined in it using
+[dlsym] (in the context of [ctypes], via {!Foreign.foreign}). But doing so
+requires knowing the path to the right [.so] file, and applications usually are
+not concerned with that (in contrast applications know where to look for
 plugins).
 
 As a special case, it is possible to pass [RTLD_DEFAULT] to [dlsym] instead of
@@ -68,45 +68,45 @@ define an OCaml wrapper around a C library like [libpng].
 First, we define a a library that is dynamically linked against [libpng]:
 
 {@dune[
-(library
- (name opng)
- (c_library_flags :standard -lpng))
+  (library
+   (name opng)
+   (c_library_flags :standard -lpng))
 ]}
 
 This library calls {!Foreign.foreign}:
 
 {[
-let version_number =
-  let open Ctypes in
-  Foreign.foreign "png_access_version_number" (void @-> returning uint32_t)
+  let version_number =
+    let open Ctypes in
+    Foreign.foreign "png_access_version_number" (void @-> returning uint32_t)
 ]}
 
 Then, we use this library in an executable:
 
 {@dune[
-(executable
- (name opng_demo)
- (libraries opng))
+  (executable
+   (name opng_demo)
+   (libraries opng))
 ]}
 
 {[
-let () =
-  let v = Opng.version_number () in
-  print_endline (Unsigned.UInt32.to_string v)
+  let () =
+    let v = Opng.version_number () in
+    print_endline (Unsigned.UInt32.to_string v)
 ]}
 
 And the symbol cannot be found - how come?
 
 {@text[
-Fatal error: exception Dl.DL_error("_build/default/opng_demo.exe: undefined symbol: png_access_version_number")
+  Fatal error: exception Dl.DL_error("_build/default/opng_demo.exe: undefined symbol: png_access_version_number")
 ]}
 
 {2 Technical explanation}
 
-Let's first explain why this does not work. When [-lpng] is added to the C
-flags in the library, it gets recorded in the [.cmxa] file as an "Extra C
-object file". This means that in turn, it will be passed by [ocamlopt] to the
-linker when producing the final executable.
+Let's first explain why this does not work. When [-lpng] is added to the C flags
+in the library, it gets recorded in the [.cmxa] file as an "Extra C object
+file". This means that in turn, it will be passed by [ocamlopt] to the linker
+when producing the final executable.
 
 However, at that point the linker can see that [-lpng] is passed but that the
 executable uses no symbol from this library (no entry exists in the symbol
@@ -115,9 +115,9 @@ linkers would keep it, but since around 2012, Linux distributions have started
 enabling this this behavior (controlled by the [--as-needed] linker flag).
 
 As a consequence, the executable is not dynamically linked against [libpng], as
-can be seen by inspecting the output of [ldd _build/default/onpg_demo.exe].
-This explains why the symbol can not be found at runtime: it has not been
-loaded by the dynamic loader.
+can be seen by inspecting the output of [ldd _build/default/onpg_demo.exe]. This
+explains why the symbol can not be found at runtime: it has not been loaded by
+the dynamic loader.
 
 {2 Moral explanation}
 
@@ -127,20 +127,21 @@ linking).
 
 {2 Workarounds}
 
-It is possible to alter a bit the project to ensure that the library stays linked.
-One solution is to reference a C symbol through an [external]. For example:
+It is possible to alter a bit the project to ensure that the library stays
+linked. One solution is to reference a C symbol through an [external]. For
+example:
 
 {[
-external _force_link : unit -> unit = "png_chunk_error"
+  external _force_link : unit -> unit = "png_chunk_error"
 ]}
 
-Note that the symbol does not have to be used in the OCaml library, and the
-type does not have to match what the symbol does. Actually, calling it is
-likely to crash since this function does not expect OCaml values as arguments.
+Note that the symbol does not have to be used in the OCaml library, and the type
+does not have to match what the symbol does. Actually, calling it is likely to
+crash since this function does not expect OCaml values as arguments.
 
 Another way to fix it is to change the linker flags to pass [--no-as-needed]
-before [-lpng], for example by using [(flags :standard -ccopt
--Wl,--no-as-needed)].
+before [-lpng], for example by using
+[(flags :standard -ccopt -Wl,--no-as-needed)].
 
 These workarounds might not be portable or break with future evolutions of the
 OCaml or C toolchains.

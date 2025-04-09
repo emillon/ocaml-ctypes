@@ -12,7 +12,8 @@ writing any C "glue code".
 
 {2 How-to guides}
 
-- {{!page-how_to_use_ctypes_in_a_dune_project}How to use ctypes in a dune project}
+- {{!page-how_to_use_ctypes_in_a_dune_project}How to use ctypes in a dune
+   project}
 - How to bind constants
 
 {2 Reference}
@@ -22,5 +23,6 @@ writing any C "glue code".
 {2 Explanation}
 
 - {{!page-how_stub_generation_works}How stub generation works}
-- {{!page-dynamic_linking_and_dynamic_loading}Dynamic linking and dynamic loading}, or: "Why can't ctypes find my symbols?"
+- {{!page-dynamic_linking_and_dynamic_loading}Dynamic linking and dynamic
+   loading}, or: "Why can't ctypes find my symbols?"
 - How does ctypes constant extraction work?
