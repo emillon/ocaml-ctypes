@@ -97,7 +97,7 @@ end
 
 {3 [lib/libpng/generator/generator.ml]}
 
-If the C library needs particular [#include] lines, they need to be specified here.
+If the C library needs particular [#include] directives, they need to be specified here.
  
 {[
 let () =
@@ -143,8 +143,8 @@ here.
 
 {3 [lib/libpng/type_generator/dune]}
 
-The [#include] lines to access the library will need to be specified here too.
-One rule needs to access the location of [ctypes] C headers. This approach
+The [#include] directives to access the library will need to be specified here
+too. One rule needs to access the location of [ctypes] C headers. This approach
 might break if [ctypes] is vendored in your dune workspace but as of Dune 3.18
 there is no good solution in that case.
 
