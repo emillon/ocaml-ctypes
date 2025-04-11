@@ -7,10 +7,10 @@
 The goal of this document is to explain what goes on behind the scenes when
 using stub generation, in particular in the {{!page-tutorial}tutorial}.
 
-The most "interesting" part that we wrote is the module that describes our bindings.
-It corresponds to the module type {!Cstubs.BINDINGS}. In the tutorial, that
-{!Bindings.Generate} ({!Cstubs.BINDINGS} is a functor type, so [Bindings.Generate]
-has an argument).
+The most "interesting" part that we wrote is the module that describes our
+bindings. It corresponds to the module type {!Cstubs.BINDINGS}. In the tutorial,
+that {!Bindings.Generate} ({!Cstubs.BINDINGS} is a functor type, so
+[Bindings.Generate] has an argument).
 
 {1 Stub generation}
 
@@ -38,19 +38,19 @@ Then, the C part generates a C function that wraps the function with the right
 macro calls:
 
 {@c[
-value gamma_1_tgamma(value x1)
-{
-   double x2 = Double_val(x1);
-   double x5 = tgamma(x2);
-   return caml_copy_double(x5);
-}
+  value gamma_1_tgamma(value x1)
+  {
+     double x2 = Double_val(x1);
+     double x5 = tgamma(x2);
+     return caml_copy_double(x5);
+  }
 ]}
 
 Finally, the OCaml part defines an [external] function that corresponds to that
 generated C function:
 
 {[
-external gamma_1_tgamma : float -> float = "gamma_1_tgamma"
+  external gamma_1_tgamma : float -> float = "gamma_1_tgamma"
 ]}
 
 The generated OCaml part contains more code, but let's leave it here for now.
@@ -83,13 +83,15 @@ conforms to the {!Ctypes.FOREIGN} module type.
 In particular, this glue code ensures that [foreign "gamma"] will call
 [gamma_1_tgamma].
 
-Since [Generated] has the right module type, this explains that the contents of [gamma.ml] in the tutorial is just:
+Since [Generated] has the right module type, this explains that the contents of
+[gamma.ml] in the tutorial is just:
 
 {[
-include Bindings.Generate(Generated)
+  include Bindings.Generate (Generated)
 ]}
 
-It includes a [tgamma : float -> float] function, and users of the library can call it.
+It includes a [tgamma : float -> float] function, and users of the library can
+call it.
 
 {1 At runtime}
 
@@ -99,32 +101,34 @@ The definition of [Gamma.tgamma] comes from the body of
 [Bindings.Generate(Generated)]. In other words, it is:
 
 {[
-open Ctypes
-open F
+  open Ctypes
+  open F
 
-let tgamma = foreign "tgamma" (double @-> returning double)
+  let tgamma = foreign "tgamma" (double @-> returning double)
 ]}
 
 Here, [F] is instanciated as [Generated]. So the definition of [foreign] is:
 
 {[
-let foreign : type a b. string -> (a -> b) fn -> (a -> b) =
-  fun name t -> match t, name with
-| Function (CI.Primitive CI.Double, Returns (CI.Primitive CI.Double)),
-  "tgamma" -> gamma_1_tgamma
-(* ... *)
+  let foreign : type a b. string -> (a -> b) fn -> a -> b =
+   fun name t ->
+    match (t, name) with
+    | ( Function (CI.Primitive CI.Double, Returns (CI.Primitive CI.Double)),
+        "tgamma" ) ->
+        gamma_1_tgamma
+  (* ... *)
 ]}
 
 This pattern matching happens at module load time and simplifies to:
 
 {[
-let tgamma = gamma_1_tgamma
+  let tgamma = gamma_1_tgamma
 ]}
 
 This function is defined in the same [Generated] module as:
 
 {[
-external gamma_1_tgamma : float -> float = "gamma_1_tgamma"
+  external gamma_1_tgamma : float -> float = "gamma_1_tgamma"
 ]}
 
 So, [tgamma 4.] passes [4.] to the C function [gamma_1_tgamma].
@@ -132,19 +136,19 @@ So, [tgamma 4.] passes [4.] to the C function [gamma_1_tgamma].
 It is available in the linked generated stubs:
 
 {@c[
-value gamma_1_tgamma(value x1)
-{
-   double x2 = Double_val(x1);
-   double x5 = tgamma(x2);
-   return caml_copy_double(x5);
-}
+  value gamma_1_tgamma(value x1)
+  {
+     double x2 = Double_val(x1);
+     double x5 = tgamma(x2);
+     return caml_copy_double(x5);
+  }
 ]}
 
 Values of type [float] are passed boxed to the OCaml runtime (this [value] is a
 pointer). [Double_val] returns the underlying [double] ([x2] is [4.]). The
-actual function from the libc is called and the result is stored in [x5] ({m
-\Gamma(4) = 6} so [x5] is [6.]). Finally, this result is returned boxed to the
-OCaml runtime ([caml_copy_double] allocated a block with [Double_tag] and
+actual function from the libc is called and the result is stored in [x5] (
+[m \Gamma(4) = 6] so [x5] is [6.]). Finally, this result is returned boxed to
+the OCaml runtime ([caml_copy_double] allocated a block with [Double_tag] and
 stores the [6.] value in it).
 
 Execution resumes on the OCaml side, and the return value is propagated to the
