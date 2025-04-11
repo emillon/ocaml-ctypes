@@ -146,9 +146,9 @@ It is available in the linked generated stubs:
 
 Values of type [float] are passed boxed to the OCaml runtime (this [value] is a
 pointer). [Double_val] returns the underlying [double] ([x2] is [4.]). The
-actual function from the libc is called and the result is stored in [x5] (
-[m \Gamma(4) = 6] so [x5] is [6.]). Finally, this result is returned boxed to
-the OCaml runtime ([caml_copy_double] allocated a block with [Double_tag] and
+actual function from the libc is called and the result is stored in [x5]
+({m \Gamma(4) = 6} so [x5] is [6.]). Finally, this result is returned boxed to the
+OCaml runtime ([caml_copy_double] allocated a block with [Double_tag] and
 stores the [6.] value in it).
 
 Execution resumes on the OCaml side, and the return value is propagated to the
