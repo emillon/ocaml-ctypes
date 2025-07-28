@@ -65,7 +65,7 @@ next section, that might not be a good idea.
 A common failure mode of [ctypes] looks like the following. Our goal is to
 define an OCaml wrapper around a C library like [libpng].
 
-First, we define a a library that is dynamically linked against [libpng]:
+First, we define a library that is dynamically linked against [libpng]:
 
 {@dune[
   (library
